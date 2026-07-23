@@ -1,0 +1,81 @@
+# ==========================================
+# Maven / Build Output
+# ==========================================
+target/
+*.war
+*.ear
+*.rar
+*.jar
+*.class
+
+# Maven / Wrapper
+.mvn/
+!/.mvn/wrapper/maven-wrapper.jar
+!/.mvn/wrapper/maven-wrapper.properties
+mvnw
+mvnw.cmd
+
+# Maven release plugin
+release.properties
+pom.xml.releaseBackup
+pom.xml.tag
+pom.xml.next
+release.properties
+release.properties.*
+
+# ==========================================
+# IDE / Editor Files
+# ==========================================
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+/out/
+
+# Eclipse
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+bin/
+/bin/
+*.launch
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.built-jar-impl.xml
+
+# ==========================================
+# Operating System Files
+# ==========================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs.generated.db
+desktop.ini
+
+# ==========================================
+# Environment Variables & Logs
+# ==========================================
+*.log
+logs/
+.env
+.env.local
+*.properties.local

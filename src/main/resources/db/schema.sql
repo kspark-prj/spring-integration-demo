@@ -1,0 +1,16 @@
+-- 1. DB ➔ SFTP Export를 위한 대상 테이블
+CREATE TABLE IF NOT EXISTS user_export (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    status VARCHAR(20) DEFAULT 'PENDING', -- PENDING, PROCESSING, PROCESSED, FAILED
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. SFTP ➔ DB Import를 위한 저장 테이블
+CREATE TABLE IF NOT EXISTS user_import (
+    id VARCHAR(50) PRIMARY KEY, -- 파일에서 제공되는 ID 또는 UUID
+    username VARCHAR(50) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
