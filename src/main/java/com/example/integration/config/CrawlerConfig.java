@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.integration.dsl.IntegrationFlow;
 import org.springframework.integration.dsl.Pollers;
+import org.springframework.integration.handler.advice.ExpressionEvaluatingRequestHandlerAdvice;
 import org.springframework.integration.http.dsl.Http;
 import org.springframework.web.client.DefaultResponseErrorHandler;
 
@@ -25,11 +26,20 @@ public class CrawlerConfig {
             "https://invalid-url-example-404.com"
     );
 
+    @Bean
+    public ExpressionEvaluatingRequestHandlerAdvice crawlerErrorAdvice() {
+        ExpressionEvaluatingRequestHandlerAdvice advice = new ExpressionEvaluatingRequestHandlerAdvice();
+        advice.setOnFailureExpressionString("'수집 실패 (네트워크/DNS 접속 불가)'");
+        advice.setReturnFailureExpressionResult(true);
+        advice.setTrapException(true); // 예외 발생 시 전파하지 않고 안전한 실패 결과값으로 대체
+        return advice;
+    }
+
     // =========================================================================
     // 예제 1. 개별 처리 Flow: 각 URL의 크롤링이 끝나는 "즉시" 개별 스레드에서 로그 출력
     // =========================================================================
     @Bean
-    public IntegrationFlow individualResultCrawlerFlow() {
+    public IntegrationFlow individualResultCrawlerFlow(ExpressionEvaluatingRequestHandlerAdvice crawlerErrorAdvice) {
         return IntegrationFlow
                 .fromSupplier(() -> TARGET_URLS,
                         e -> e.poller(Pollers.cron("0 * * * * *")))
@@ -37,14 +47,14 @@ public class CrawlerConfig {
                 .split()
                 .channel(c -> c.executor(Executors.newVirtualThreadPerTaskExecutor()))
 
-                // 🌟 [수정] HTTP 요청 전 헤더를 안전하게 추가 (.enrichHeaders)
                 .enrichHeaders(h -> h.header(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"))
 
-                // HTTP GET 요청
+                // HTTP GET 요청 (DNS/네트워크 오류 발생 시 crawlerErrorAdvice로 예외 포획 및 안전한 문자열 반환)
                 .handle(Http.outboundGateway(url -> url.getPayload())
                         .httpMethod(HttpMethod.GET)
                         .expectedResponseType(String.class)
-                        .errorHandler(new SafeResponseErrorHandler()))
+                        .errorHandler(new SafeResponseErrorHandler()),
+                        e -> e.advice(crawlerErrorAdvice))
 
                 // Jsoup 파싱 및 결과 변환
                 .<Object, String>transform(payload -> parseTitle(payload))
@@ -61,7 +71,7 @@ public class CrawlerConfig {
     // 예제 2. 집계 처리 Flow: 병렬 수집 후 모든 URL 결과가 "다 모였을 때" 한 번에 출력
     // =========================================================================
     @Bean
-    public IntegrationFlow aggregatedResultCrawlerFlow() {
+    public IntegrationFlow aggregatedResultCrawlerFlow(ExpressionEvaluatingRequestHandlerAdvice crawlerErrorAdvice) {
         return IntegrationFlow
                 .fromSupplier(() -> TARGET_URLS,
                         e -> e.poller(Pollers.cron("30 * * * * *")))
@@ -69,13 +79,13 @@ public class CrawlerConfig {
                 .split()
                 .channel(c -> c.executor(Executors.newVirtualThreadPerTaskExecutor()))
 
-                // 🌟 [수정] HTTP 요청 전 헤더를 안전하게 추가
                 .enrichHeaders(h -> h.header(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"))
 
                 .handle(Http.outboundGateway(url -> url.getPayload())
                         .httpMethod(HttpMethod.GET)
                         .expectedResponseType(String.class)
-                        .errorHandler(new SafeResponseErrorHandler()))
+                        .errorHandler(new SafeResponseErrorHandler()),
+                        e -> e.advice(crawlerErrorAdvice))
 
                 .<Object, String>transform(payload -> parseTitle(payload))
 
@@ -109,7 +119,7 @@ public class CrawlerConfig {
             }
         }
 
-        return "수집 실패: " + payload.toString();
+        return payload.toString();
     }
 
     private static class SafeResponseErrorHandler extends DefaultResponseErrorHandler {

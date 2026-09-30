@@ -1,12 +1,12 @@
 # Spring Integration 연동 가이드 및 방어 로직 분석
 
-이 문서는 제공된 Spring Boot 3.x 기반 Spring Integration 데모 프로젝트의 핵심 구성 요소, 파일 처리 시 발생할 수 있는 "미완성 파일(Incomplete File) 처리 문제"를 예방하기 위한 방어 로직의 원리 및 설정, 그리고 **PostgreSQL 데이터베이스 연동** 시나리오를 설명합니다.
+이 문서는 제공된 Spring Boot 3.x 기반 Spring Integration 데모 프로젝트의 핵심 구성 요소, 파일 처리 시 발생할 수 있는 "미완성 파일(Incomplete File) 처리 문제"를 예방하기 위한 방어 로직의 원리 및 설정, **PostgreSQL 데이터베이스 연동**, 그리고 **Spring Security & Control Bus 기반 인바운드 어댑터 모니터링/제어 대시보드 구조**를 설명합니다.
 
 ---
 
 ## 1. 프로젝트 아키텍처 개요
 
-본 프로젝트는 다음과 같은 핵심 연동 흐름을 제공합니다.
+본 프로젝트는 다음과 같은 핵심 연동 및 모니터링 흐름을 제공합니다.
 
 ```mermaid
 graph TD
@@ -20,7 +20,7 @@ graph TD
     subgraph SFTP Flow
         F[sftpUploadChannel] -->|Upload with .writing suffix| G[SftpOutboundFlow]
         G -->|Rename on finish| H[Remote SFTP Server]
-        H -->|Polling & Filter *.txt| I[SftpInboundFileSynchronizer]
+        H -->|Polling & Filter *.csv| I[SftpInboundFileSynchronizer]
         I -->|Download| J[SftpInboundFlow]
         J -->|Payload: File| K[FileProcessService: processDownloadedFile]
     end
@@ -44,6 +44,16 @@ graph TD
         U -->|Parse CSV Line to DTO| V[CsvTransformer]
         V -->|Batch/UPSERT Insert| W[jdbcImportMessageHandler]
         W --> DB_I[(USER_IMPORT)]
+    end
+
+    subgraph Security & Control Bus Dashboard
+        Client[Web Browser] -->|Auth Filter & ROLE_ADMIN| Sec[Spring Security FilterChain]
+        Sec -->|Redirect / -> /dashboard.html| Web[dashboard.html UI]
+        Web -->|GET /api/dashboard/adapters| Ctrl[DashboardIntegrationController]
+        Ctrl -->|Scan SmartLifecycle & Event Metrics| Web
+        Web -->|POST /api/dashboard/adapters/{name}/{action}| Ctrl
+        Ctrl -->|Send SpEL @bean.start() / @bean.stop()| CB[controlBusChannel]
+        CB -->|ControlBus Flow| Flow[IntegrationFlow & Adapters Lifecycle]
     end
 ```
 
@@ -102,8 +112,6 @@ TCP는 연결 지향의 바이트 스트림(Byte Stream) 전송 프로토콜이�
   - 이를 해결하기 위해 폴러에 **`PlatformTransactionManager`**를 바인딩하고, **`setUpdateSql`** 설정을 적용합니다.
   - **`SELECT` 쿼리 실행 직후 동일 트랜잭션 내에서 즉시 `UPDATE user_export SET status = 'PROCESSING' WHERE id IN (:id)`가 실행**됩니다. 
   - 이를 통해 데이터를 전송하는 긴 네트워크 I/O 작업 전에 상태값이 트랜잭션 단위로 신속히 반영되어, 다른 노드의 폴링 스레드가 동일 데이터를 다시 가져가지 못하게 막습니다.
-- **네트워크 I/O 격리**:
-  - SFTP 전송은 네트워크 결함 등 예외 상황이 발생하기 쉽습니다. SFTP 전송이 실패한 경우, 로직의 최종 핸들러에서 DB에 실패 플래그(`FAILED`)를 갱신하거나 보상 로직을 실행하도록 구성해야 하며, 연동 성공 시에만 최종적으로 `PROCESSED`로 업데이트합니다.
 
 ### 5.2 SFTP ➔ DB Import (다운로드 및 저장)
 - **동작 원리**: SFTP 서버에서 파일 동기화로 신규 CSV 파일을 다운로드받은 뒤, 행 단위로 분할하여 DB에 적재합니다.
@@ -113,12 +121,26 @@ TCP는 연결 지향의 바이트 스트림(Byte Stream) 전송 프로토콜이�
 - **UPSERT 기법을 적용한 저장**:
   - `JdbcMessageHandler`에 **`ON CONFLICT (id) DO UPDATE`** 쿼리를 정의해 이미 동일한 ID를 가진 유저가 DB에 존재하는 경우 자동으로 신규 정보로 수정(Update)하고, 없는 경우 신규 등록(Insert)되도록 UPSERT를 수행합니다.
 
-#### [Import SQL 예시]
-```sql
-INSERT INTO user_import (id, username, email) 
-VALUES (:id, :username, :email) 
-ON CONFLICT (id) DO UPDATE SET 
-    username = EXCLUDED.username, 
-    email = EXCLUDED.email, 
-    created_at = NOW();
-```
+---
+
+## 6. [대시보드 & Control Bus] 인바운드 어댑터 상태 모니터링 및 동적 제어
+
+### 6.1 Control Bus 연동 아키텍처
+Spring Integration의 `ControlBus` 메커니즘을 사용하여 별도의 런타임 재구동 없이 애플리케이션 내 MessageSource, Poller, InboundChannelAdapter, IntegrationFlow 등의 가동 상태를 동적으로 변경합니다.
+- **채널 설정**: `controlBusChannel` (`DirectChannel`)
+- **Control Bus 구성**: `IntegrationFlow.from(CONTROL_BUS_CHANNEL).controlBus().get()`
+- **동적 명령 실행**: 대시보드 요청 시 `@beanName.start()` 또는 `@beanName.stop()` SpEL 구문을 `controlBusChannel`로 발송하여 런타임 제어를 수행합니다.
+
+### 6.2 실행 횟수 및 마지막 실행 시각 추적 (`AdapterExecutionTracker`)
+- **`@GlobalChannelInterceptor` 및 `ApplicationListener<IntegrationEvent>`**:
+  - 채널을 거치는 모든 메시지 전송 이벤트(`preSend`) 및 Spring Integration 시스템 이벤트(`IntegrationEvent`)를 수집합니다.
+  - 각 인바운드 어댑터 및 채널별 총 처리 건수(`totalCount`)를 atomic 카운터로 기록하고, **마지막 실행 시각(`lastExecutedTime`)**을 `LocalDateTime` 형태로 저장합니다.
+
+### 6.3 Spring Security DB 연동 & 리다이렉트 흐름
+- **계정 테이블 (`app_user`)**: PostgreSQL DB에 저장되며, 초기 생성되는 `admin` 계정은 `BCryptPasswordEncoder`로 암호화된 비밀번호(`admin1!`)와 `ROLE_ADMIN` 권한을 보유합니다.
+- **`CustomUserDetailsService`**: `UserRepository`를 통해 데이터베이스 사용자를 검증합니다.
+- **인증 및 페이지 이동 흐름**:
+  1. 사용자 접속 `http://localhost:8080/` ➔ `WebMvcConfig`에 의해 `/dashboard.html`로 리다이렉트
+  2. 미인증 상태 시 `DashboardSecurityConfig`에 의해 커스텀 로그인 페이지(`/login.html`)로 이동
+  3. 로그인 성공 시 `defaultSuccessUrl('/dashboard.html', true)` 규칙으로 대시보드로 자동 진입
+  4. `/dashboard.html` 및 `/api/dashboard/**` 접근 시 `ROLE_ADMIN` 권한을 검증하여 보호합니다.
