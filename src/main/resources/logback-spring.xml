@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <property name="LOG_PATH" value="./logs" />
+
+    <!-- 콘솔 출력 -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{logicType:-SYSTEM}] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- MDC(logicType) 기준 동적 로그 파일 분리 Appender -->
+    <appender name="SIFT_INTEGRATION_LOG" class="ch.qos.logback.classic.sift.SiftingAppender">
+        <discriminator>
+            <key>logicType</key>
+            <defaultValue>integration-default</defaultValue>
+        </discriminator>
+
+        <sift>
+            <appender name="FILE-${logicType}" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <!-- 현재 쓰여지는 로그 파일 (예: ./logs/order-flow/order-flow.log) -->
+                <file>${LOG_PATH}/${logicType}/${logicType}.log</file>
+
+                <!-- 일자별 로그 파일 롤링 정책 -->
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <!-- 매일 자정에 이전 날짜 로그를 gz로 압축 보관 -->
+                    <fileNamePattern>${LOG_PATH}/${logicType}/${logicType}-%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+                    <!-- 보관 주기 (30일) -->
+                    <maxHistory>30</maxHistory>
+                    <!-- 총 로그 파일 용량 제한 (필요 시 선택 지정) -->
+                    <totalSizeCap>10GB</totalSizeCap>
+                </rollingPolicy>
+
+                <encoder>
+                    <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+                </encoder>
+            </appender>
+        </sift>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="SIFT_INTEGRATION_LOG" />
+    </root>
+
+</configuration>
