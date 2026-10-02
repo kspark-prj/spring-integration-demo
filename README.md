@@ -1,6 +1,9 @@
 # 🚀 Spring Boot 3.x & Spring Integration 6.x Demo Project
 
-## 이 프로젝트는 **Spring Boot 3.x** 및 **Spring Integration 6.x (Java DSL)** 기반의 엔터프라이즈 통합 패턴 예제입니다. 파일 감시, SFTP 전송, TCP/IP 소켓 통신, PostgreSQL 데이터베이스 연동(Export/Import) 뿐만 아니라, **외부 대시보드 라이브러리 없이 Spring Security 및 Control Bus 기반으로 인바운드 어댑터의 상태(RUNNING / STOPPED), 총 처리 건수, 마지막 실행 시각을 실시간 모니터링하고 가동/정지 제어할 수 있는 모던 UI 대시보드**를 제공합니다.
+이 프로젝트는 **Spring Boot 3.x** 및 **Spring Integration 6.x (Java DSL)** 기반의 엔터프라이즈 통합 패턴 예제입니다.
+파일 감시, SFTP 전송, TCP/IP 소켓 통신, PostgreSQL 데이터베이스 연동(Export/Import) 뿐만 아니라,
+**외부 대시보드 라이브러리 없이 Spring Security 및 Control Bus 기반으로 인바운드 어댑터의 상태(RUNNING / STOPPED), 총 처리 건수, 마지막 실행 시각을
+실시간 모니터링하고 가동/정지 제어할 수 있는 모던 UI 대시보드**를 제공합니다.
 
 ## 테스트시 사전 준비사항
 
