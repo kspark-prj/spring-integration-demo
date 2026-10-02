@@ -1,5 +1,8 @@
 package com.example.integration.interceptor;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.slf4j.MDC;
 import org.springframework.integration.context.IntegrationObjectSupport;
 import org.springframework.messaging.Message;
@@ -12,14 +15,17 @@ public class MdcLogInterceptor implements ChannelInterceptor {
     private static final String MDC_KEY = "logicType";
     private static final String DEFAULT_LOGIC_TYPE = "integration-default";
 
+    // 채널별 logicType 반복 계산을 방지하기 위한 캐시 (성능 최적화)
+    private final Map<MessageChannel, String> logicTypeCache = new ConcurrentHashMap<>();
+
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         // 1. 메시지 헤더에 LOGIC_TYPE이 지정되어 있으면 우선 사용
         String logicType = message.getHeaders().get(LOGIC_TYPE_HEADER, String.class);
 
-        // 2. 헤더에 없으면 채널 이름에서 자동 추출 (공통 처리)
+        // 2. 헤더에 없으면 채널에서 자동 추출 (공통 처리)
         if (logicType == null) {
-            logicType = resolveLogicTypeFromChannel(channel);
+            logicType = logicTypeCache.computeIfAbsent(channel, this::resolveLogicTypeFromChannel);
         }
 
         // MDC 세팅
@@ -37,10 +43,26 @@ public class MdcLogInterceptor implements ChannelInterceptor {
         if (channel instanceof IntegrationObjectSupport integrationChannel) {
             String componentName = integrationChannel.getComponentName();
             if (componentName != null && !componentName.isBlank()) {
-                return extractPrefix(componentName);
+                return extractLogicType(componentName);
             }
         }
         return DEFAULT_LOGIC_TYPE;
+    }
+
+    private String extractLogicType(String componentName) {
+        // 1. IntegrationFlow의 @Bean 함수명으로 생성된 익명 채널명 처리
+        // 예: "individualResultCrawlerFlow.channel#0" -> "individualResultCrawlerFlow"
+        // 예: "orderProcessingFlow.input" -> "orderProcessingFlow"
+        if (componentName.contains(".")) {
+            String flowBeanName = componentName.split("\\.")[0];
+            if (!flowBeanName.isBlank()) {
+                return flowBeanName;
+            }
+        }
+
+        // 2. 명시적 채널명(예: orderInputChannel)일 경우 기존 파싱 규칙 적용
+        // 예: orderInputChannel -> order
+        return extractPrefix(componentName);
     }
 
     private String extractPrefix(String channelName) {
