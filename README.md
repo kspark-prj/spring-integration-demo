@@ -133,3 +133,4 @@ mvn spring-boot:run
 1. **로그인 & 리다이렉트**: `http://localhost:8080/` 접속 ➔ 로그인 화면 ➔ `admin` / `admin1!` 입력 ➔ 대시보드 메인(`dashboard.html`) 자동 이동
 2. **실시간 모니터링**: 3초 주기 자동 동기화로 Cron, DB Export, SFTP Import, Crawler 어댑터의 상태, 처리 건수 및 **마지막 실행 시각** 실시간 갱신
 3. **Control Bus 어댑터 제어**: 대시보드 테이블의 **[Stop]** 또는 **[Start]** 버튼 클릭 시 해당 인바운드 어댑터가 즉시 가동/중지되며 Toast 알림 피드백 제공
+4. 테스트
