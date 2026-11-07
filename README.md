@@ -135,3 +135,4 @@ mvn spring-boot:run
 3. **Control Bus 어댑터 제어**: 대시보드 테이블의 **[Stop]** 또는 **[Start]** 버튼 클릭 시 해당 인바운드 어댑터가 즉시 가동/중지되며 Toast 알림 피드백 제공
 4. 테스트
 5. edit
+6. ㅇㅁㄹㄴㅇㄻㄴ
